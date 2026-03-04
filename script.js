@@ -8,6 +8,24 @@ const getCoords = (address) => {
     });
 };
 
+/** address1(都道府県), address2(市区町村), address3(町名) から japanese-addresses API で座標を取得 */
+async function getCoordsFromJapaneseAddresses(address1, address2, address3) {
+    const enc = (s) => encodeURIComponent(s);
+    const url = `https://geolonia.github.io/japanese-addresses/api/ja/${enc(address1)}/${enc(address2)}.json`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const towns = await res.json();
+    if (!Array.isArray(towns) || towns.length === 0) return null;
+    const townName = (address3 || '').trim();
+    const match = townName
+        ? towns.find(t => t.town && (t.town === townName || t.town.startsWith(townName)))
+        : towns[0];
+    if (match && typeof match.lat === 'number' && typeof match.lng === 'number') {
+        return { lat: match.lat, lng: match.lng };
+    }
+    return null;
+}
+
 async function fetchWeather() {
     const input = document.getElementById('locationInput').value.trim();
     const resultDiv = document.getElementById('result');
@@ -17,25 +35,46 @@ async function fetchWeather() {
 
     try {
         let lat, lon;
+        const validCoord = (v) => typeof v === 'number' && !isNaN(v);
         // 1. 座標取得の安定化
         if (input.includes(',')) {
             const parts = input.split(',');
             lat = parseFloat(parts[0]); lon = parseFloat(parts[1]);
+            if (!validCoord(lat) || !validCoord(lon)) throw new Error("緯度・経度の形式が正しくありません。例: 35.6762,139.6503");
             console.log('Direct coords:', lat, lon);
         } else {
             console.log('Fetching from zipcode:', input);
-            const zipRes = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${input.replace(/-/g, '')}`);
-            const zipData = await zipRes.json();
-            console.log('Zipcloud response:', zipData);
-            // zipData.results が null の場合の処理
-            if (!zipData.results || zipData.results.length === 0) throw new Error("郵便番号が見つかりません。");
-            
-            const addr = zipData.results[0];
+            const zipcode = input.replace(/-/g, '').replace(/\s/g, '');
+            let addr = null;
+            const terRes = await fetch(`https://postcode.teraren.com/postcodes/${zipcode}.json`);
+            if (terRes.ok) {
+                const ter = await terRes.json();
+                if (ter.prefecture && ter.city) {
+                    addr = {
+                        address1: ter.prefecture,
+                        address2: ter.city,
+                        address3: ter.suburb || ''
+                    };
+                }
+            }
+            if (!addr) {
+                const zipRes = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zipcode}`);
+                const zipData = await zipRes.json();
+                if (zipData.results && zipData.results.length > 0) {
+                    addr = zipData.results[0];
+                    addr.address3 = addr.address3 || '';
+                }
+            }
+            if (!addr) throw new Error("郵便番号が見つかりません。");
             const addressText = `${addr.address1}${addr.address2}${addr.address3}`;
             console.log('Address text:', addressText);
-            const latlng = await getCoords(addressText);
-            console.log('getCoords result:', latlng);
-            if (!latlng) throw new Error("住所から座標を特定できませんでした。");
+            let latlng = await getCoordsFromJapaneseAddresses(addr.address1, addr.address2, addr.address3);
+            if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
+                latlng = await getCoords(addressText);
+            }
+            if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
+                throw new Error("住所から座標を特定できませんでした。");
+            }
             lat = latlng.lat; lon = latlng.lng;
             console.log('Final coords:', lat, lon);
         }
