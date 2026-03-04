@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Model Weather Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<script src="https://cdn.geolonia.com/community-geocoder.js"></script>
+<body class="bg-gray-100 p-8">
+    <div class="max-w-2xl mx-auto bg-white p-6 rounded-xl shadow-md">
+        <h1 class="text-2xl font-bold mb-4">天気予報モデル比較</h1>
+        
+        <div class="flex gap-2 mb-6">
+            <input type="text" id="locationInput" placeholder="郵便番号(1000001) or 緯度,経度" 
+                   class="flex-1 border p-2 rounded">
+            <button onclick="fetchWeather()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+                取得
+            </button>
+        </div>
+
+        <div id="result" class="space-y-4">
+            </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>
