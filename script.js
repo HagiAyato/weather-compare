@@ -85,9 +85,10 @@ async function fetchWeather() {
             const baseUrl = isJma ? 'https://api.open-meteo.com/v1/jma' : 'https://api.open-meteo.com/v1/forecast';
 
             // JMAの場合は降水量(precipitation_sum)を、他は確率を取得
+            // ★ temperature_2m_min を追加
             const dailyParams = isJma
-                ? 'temperature_2m_max,precipitation_sum'
-                : 'temperature_2m_max,precipitation_probability_max';
+                ? 'temperature_2m_max,temperature_2m_min,precipitation_sum'
+                : 'temperature_2m_max,temperature_2m_min,precipitation_probability_max';
 
             const params = new URLSearchParams({
                 latitude: lat,
@@ -104,18 +105,20 @@ async function fetchWeather() {
                 if (!d.daily) return null;
 
                 const timeArr = d.daily.time || [];
-                const tempKey = Object.keys(d.daily).find(k => k.startsWith('temperature_2m_max'));
+                const maxKey = Object.keys(d.daily).find(k => k.startsWith('temperature_2m_max'));
+                const minKey = Object.keys(d.daily).find(k => k.startsWith('temperature_2m_min'));
                 const rainKey = Object.keys(d.daily).find(k => k.startsWith('precipitation_probability_max') || k.startsWith('precipitation_sum'));
 
                 const days = Math.min(timeArr.length, getDays);
                 const result = [];
                 for (let i = 0; i < days; i++) {
-                    const t = d.daily[tempKey]?.[i];
+                    const tMax = d.daily[maxKey]?.[i];
+                    const tMin = d.daily[minKey]?.[i];
                     const r = d.daily[rainKey]?.[i] ?? 0;
-                    // null や undefined のチェックを厳密に
-                    const tempVal = (t !== undefined && t !== null) ? t.toFixed(1) : null;
+
                     result.push({
-                        temp: tempVal,
+                        tempMax: (tMax !== undefined && tMax !== null) ? tMax.toFixed(1) : null,
+                        tempMin: (tMin !== undefined && tMin !== null) ? tMin.toFixed(1) : null,
                         rain: (r !== undefined && r !== null) ? r : 0,
                         isJma
                     });
@@ -150,7 +153,7 @@ async function fetchWeather() {
 
         const renderHeader = (dates) => {
             const cells = dates.map(d => {
-                const m = new Date(d).toLocaleDateString('ja-JP', {month:'numeric', day:'numeric'});
+                const m = new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
                 return `<th class="px-2 py-1 text-[9px] whitespace-nowrap">${m}</th>`;
             }).join('');
             // first cell left empty but allow width to expand naturally
@@ -158,34 +161,33 @@ async function fetchWeather() {
         };
 
         const renderDayCard = (data, color) => {
-            if (!data || data.temp === null) {
+            if (!data || data.tempMax === null) {
                 return `
-                    <td class="w-24 p-2 bg-gray-50 rounded border border-gray-100 text-center min-h-[110px]">
-                        <div class="flex flex-col justify-center h-full">
-                            <p class="text-[9px] font-bold text-gray-400">-</p>
-                            <p class="text-[10px] text-gray-300 mt-2">データなし</p>
-                        </div>
+                    <td class="w-24 p-2 bg-gray-50 rounded border border-gray-100 text-center">
+                        <p class="text-[10px] text-gray-300">データなし</p>
                     </td>
                 `;
             }
+
             const colors = {
-                blue:  { bg: 'bg-blue-50',  border: 'border-blue-100',  text: 'text-blue-800' },
+                blue: { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-800' },
                 green: { bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-800' },
-                red:   { bg: 'bg-red-50',   border: 'border-red-100',   text: 'text-red-800' }
+                red: { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-800' }
             };
             const c = colors[color];
             const unit = data.isJma ? "mm" : "%";
-            const rainLabel = data.isJma ? "予想降水量" : "降水確率";
 
             return `
-                <td class="w-24 p-2 ${c.bg} rounded border ${c.border} text-center min-h-[110px] shadow-sm">
-                    <div class="flex flex-col justify-between h-full">
-                        <div>
-                            <p class="text-xl font-mono font-bold leading-none">${data.temp}<span class="text-[10px] ml-0.5">°C</span></p>
+                <td class="p-2 ${c.bg} border ${c.border} text-center min-w-[80px]">
+                    <div class="flex flex-col gap-1">
+                        <div class="leading-tight">
+                            <span class="text-sm font-bold text-red-500">${data.tempMax}</span>
+                            <span class="text-[10px] text-gray-400">/</span>
+                            <span class="text-sm font-bold text-blue-500">${data.tempMin}</span>
+                            <span class="text-[8px] text-gray-400">°C</span>
                         </div>
                         <div class="pt-1 border-t border-white/60">
-                            <p class="text-[8px] text-gray-500 scale-90">${rainLabel}</p>
-                            <p class="text-sm font-bold text-blue-600">${data.rain}<span class="text-[8px] ml-0.5">${unit}</span></p>
+                            <p class="text-[9px] font-bold text-blue-600">${data.rain}<span class="text-[7px] ml-0.5">${unit}</span></p>
                         </div>
                     </div>
                 </td>
@@ -194,8 +196,14 @@ async function fetchWeather() {
 
         const renderRow = (label, modelData, color) => {
             const cells = (modelData || []).map(d => renderDayCard(d, color)).join('');
-            // prevent label from wrapping vertically
-            return `<tr><td class="text-[9px] font-bold text-gray-600 py-1 whitespace-nowrap">${label}</td>${cells}</tr>`;
+            return `
+                <tr>
+                    <td class="text-[10px] font-bold text-gray-600 py-2 pr-2 whitespace-nowrap text-left">
+                        ${label}<br><span class="text-[8px] font-normal text-gray-400">最高/最低</span>
+                    </td>
+                    ${cells}
+                </tr>
+            `;
         };
 
         resultDiv.innerHTML = `
