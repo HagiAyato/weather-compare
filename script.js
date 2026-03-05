@@ -1,3 +1,8 @@
+/**
+ * 住所→緯度経度座標変換(google Maps APIのジオコーディングメソッド)
+ * @param {string} address 住所
+ * @returns 座標
+ */
 const getCoords = (address) => {
     return new Promise((resolve) => {
         if (typeof window.getLatLng !== 'function') {
@@ -8,7 +13,13 @@ const getCoords = (address) => {
     });
 };
 
-/** address1(都道府県), address2(市区町村), address3(町名) から japanese-addresses API で座標を取得 */
+/**
+ * 住所からjapanese-addresses API で座標を取得
+ * @param {*} address1 都道府県
+ * @param {*} address2 市区町村
+ * @param {*} address3 町名
+ * @returns 座標
+ */
 async function getCoordsFromJapaneseAddresses(address1, address2, address3) {
     const enc = (s) => encodeURIComponent(s);
     const url = `https://geolonia.github.io/japanese-addresses/api/ja/${enc(address1)}/${enc(address2)}.json`;
@@ -26,6 +37,41 @@ async function getCoordsFromJapaneseAddresses(address1, address2, address3) {
     return null;
 }
 
+/**
+ * 郵便番号→住所変換
+ * 1. postcode.teraren.com
+ * 2. フォールバックとしてzipcloud.ibsnet.co.jp
+ * @param {string} zipcode 郵便番号
+ * @returns 住所
+ */
+async function postToAddress(zipcode){
+    let addr = null;
+    const terRes = await fetch(`https://postcode.teraren.com/postcodes/${zipcode}.json`);
+    if (terRes.ok) {
+        const ter = await terRes.json();
+        if (ter.prefecture && ter.city) {
+            addr = {
+                address1: ter.prefecture,
+                address2: ter.city,
+                address3: ter.suburb || ''
+            };
+        }
+    }
+    if (!addr) {
+        const zipRes = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zipcode}`);
+        const zipData = await zipRes.json();
+        if (zipData.results && zipData.results.length > 0) {
+            addr = zipData.results[0];
+            addr.address3 = addr.address3 || '';
+        }
+    }
+    if (!addr) throw new Error("郵便番号が見つかりません。");
+    return addr
+}
+
+/**
+ * メイン処理
+ */
 async function fetchWeather() {
     const input = document.getElementById('locationInput').value.trim();
     const resultDiv = document.getElementById('result');
@@ -36,37 +82,20 @@ async function fetchWeather() {
     try {
         let lat, lon;
         const validCoord = (v) => typeof v === 'number' && !isNaN(v);
-        // 1. 座標取得の安定化
+        // 1. 座標取得
         if (input.includes(',')) {
+            // --- A. 緯度経度による直接指定 ---
             const parts = input.split(',');
-            lat = parseFloat(parts[0]); lon = parseFloat(parts[1]);
+            lat = parseFloat(parts[0]);
+            lon = parseFloat(parts[1]);
             if (!validCoord(lat) || !validCoord(lon)) throw new Error("緯度・経度の形式が正しくありません。例: 35.6762,139.6503");
-            console.log('Direct coords:', lat, lon);
-        } else {
+        } else if (/^\d{7}$|^\d{3}-\d{4}$/.test(input.replace(/\s/g, ''))) {
+            // --- B. 郵便番号による検索 ---
+            // 正規表現解説: ^\d{7}$ (数字7桁のみ) または ^\d{3}-\d{4}$ (3桁-4桁)
             console.log('Fetching from zipcode:', input);
             const zipcode = input.replace(/-/g, '').replace(/\s/g, '');
-            let addr = null;
-            const terRes = await fetch(`https://postcode.teraren.com/postcodes/${zipcode}.json`);
-            if (terRes.ok) {
-                const ter = await terRes.json();
-                if (ter.prefecture && ter.city) {
-                    addr = {
-                        address1: ter.prefecture,
-                        address2: ter.city,
-                        address3: ter.suburb || ''
-                    };
-                }
-            }
-            if (!addr) {
-                const zipRes = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zipcode}`);
-                const zipData = await zipRes.json();
-                if (zipData.results && zipData.results.length > 0) {
-                    addr = zipData.results[0];
-                    addr.address3 = addr.address3 || '';
-                }
-            }
-            if (!addr) throw new Error("郵便番号が見つかりません。");
-            const addressText = `${addr.address1}${addr.address2}${addr.address3}`;
+            addr = await postToAddress(zipcode);
+            addressText = `${addr.address1}${addr.address2}${addr.address3}`;
             console.log('Address text:', addressText);
             let latlng = await getCoordsFromJapaneseAddresses(addr.address1, addr.address2, addr.address3);
             if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
@@ -76,8 +105,34 @@ async function fetchWeather() {
                 throw new Error("住所から座標を特定できませんでした。");
             }
             lat = latlng.lat; lon = latlng.lng;
-            console.log('Final coords:', lat, lon);
+        } else if (input.length > 0) {
+            // --- C. 直接住所や地名が入力された場合 ---
+            console.log('Fetching from address text:', input);
+            let latlng = null;
+
+            // 1. まずは HeartRails Geo API を使って住所から座標を取得してみる
+            // (これが一番安定して「都道府県・市区町村」レベルの座標を返します)
+            try {
+                const geoRes = await fetch(`https://geoapi.heartrails.com/api/json?method=suggest&matching=like&keyword=${encodeURIComponent(input)}`);
+                const geoData = await geoRes.json();
+                if (geoData.response && geoData.response.location && geoData.response.location.length > 0) {
+                    const loc = geoData.response.location[0];
+                    latlng = { lat: parseFloat(loc.y), lng: parseFloat(loc.x) };
+                    console.log('Coords from HeartRails:', latlng);
+                }
+            } catch (e) {
+                console.warn('HeartRails API failed, trying fallback...');
+            }
+
+            // 2. 解析できない、またはAPIで座標が取れなかった場合はエラー
+            if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
+                throw new Error("入力された場所が見つかりませんでした。");
+            }
+            lat = latlng.lat; lon = latlng.lng;
+        } else {
+            throw new Error("場所を入力してください（地名、郵便番号、または緯度経度）。");
         }
+        console.log('Final coords:', lat, lon);
 
         // 2. 各モデル取得関数の強化版
         const fetchModel = async (modelName) => {
@@ -153,7 +208,7 @@ async function fetchWeather() {
 
         const renderHeader = (dates) => {
             const cells = dates.map(d => {
-                const m = new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+                const m = new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
                 return `<th class="px-2 py-1 text-[9px] whitespace-nowrap">${m}</th>`;
             }).join('');
             // first cell left empty but allow width to expand naturally
@@ -206,6 +261,7 @@ async function fetchWeather() {
             `;
         };
 
+        const mapUrl = `https://static-maps.yandex.ru/1.x/?lang=ja_JP&ll=${lon},${lat}&z=13&l=map&size=300,120`;
         resultDiv.innerHTML = `
             <div class="p-4 bg-white border rounded-lg shadow-sm overflow-x-auto">
                 <h2 class="font-bold text-lg mb-4 text-center text-gray-700 underline decoration-blue-200">週間予報比較</h2>
@@ -219,6 +275,11 @@ async function fetchWeather() {
                 </table>
                 <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
                     地点: ${lat.toFixed(2)}, ${lon.toFixed(2)} (Open-Meteo API)
+                </div>
+                <div class="mt-2 w-full max-w-[400px] h-[120px] mx-auto rounded-md border border-gray-200 overflow-hidden shadow-sm hover:opacity-90 transition-opacity">
+                    <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank">
+                        <img src="${mapUrl}" alt="Location Map" class="w-full h-full object-cover">
+                    </a>
                 </div>
             </div>
         `;
