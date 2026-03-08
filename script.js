@@ -1,3 +1,17 @@
+/** WMO天気コードを絵文字に変換 */
+function getWeatherIcon(code) {
+    if (code === 0) return "☀️";
+    if (code <= 3) return "🌤️";
+    if (code <= 48) return "☁️";
+    if (code <= 57) return "🌦️";
+    if (code <= 67) return "☔";
+    if (code <= 77) return "❄️";
+    if (code <= 82) return "☔";
+    if (code <= 86) return "❄️";
+    if (code <= 99) return "⚡";
+    return "❓";
+}
+
 /**
  * 住所→緯度経度座標変換(google Maps APIのジオコーディングメソッド)
  * @param {string} address 住所
@@ -142,8 +156,8 @@ async function fetchWeather() {
             // JMAの場合は降水量(precipitation_sum)を、他は確率を取得
             // ★ temperature_2m_min を追加
             const dailyParams = isJma
-                ? 'temperature_2m_max,temperature_2m_min,precipitation_sum'
-                : 'temperature_2m_max,temperature_2m_min,precipitation_probability_max';
+                ? 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum'
+                : 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max';
 
             const params = new URLSearchParams({
                 latitude: lat,
@@ -163,6 +177,7 @@ async function fetchWeather() {
                 const maxKey = Object.keys(d.daily).find(k => k.startsWith('temperature_2m_max'));
                 const minKey = Object.keys(d.daily).find(k => k.startsWith('temperature_2m_min'));
                 const rainKey = Object.keys(d.daily).find(k => k.startsWith('precipitation_probability_max') || k.startsWith('precipitation_sum'));
+                const codeKey = 'weather_code'; // 共通
 
                 const days = Math.min(timeArr.length, getDays);
                 const result = [];
@@ -172,6 +187,7 @@ async function fetchWeather() {
                     const r = d.daily[rainKey]?.[i] ?? 0;
 
                     result.push({
+                        code: d.daily[codeKey]?.[i], // 天気コード
                         tempMax: (tMax !== undefined && tMax !== null) ? tMax.toFixed(1) : null,
                         tempMin: (tMin !== undefined && tMin !== null) ? tMin.toFixed(1) : null,
                         rain: (r !== undefined && r !== null) ? r : 0,
@@ -229,19 +245,22 @@ async function fetchWeather() {
                 green: { bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-800' },
                 red: { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-800' }
             };
-            const c = colors[color];
+            // 雨の判定（JMAなら0.1mm以上、他は降水確率30%以上で水色に）
+            const isRaining = data.isJma ? (data.rain > 0) : (data.rain >= 30);
+            const bgClass = isRaining ? 'bg-cyan-100 border-cyan-200' : `${colors[color].bg} ${colors[color].border}`;
             const unit = data.isJma ? "mm" : "%";
 
             return `
-                <td class="p-2 ${c.bg} border ${c.border} text-center min-w-[80px]">
+                <td class="p-2 border ${bgClass} text-center min-w-[80px] transition-colors duration-300">
                     <div class="flex flex-col gap-1">
+                        <div class="text-xl mb-1">${getWeatherIcon(data.code)}</div>
                         <div class="leading-tight">
                             <span class="text-sm font-bold text-red-500">${data.tempMax}</span>
                             <span class="text-[10px] text-gray-400">/</span>
                             <span class="text-sm font-bold text-blue-500">${data.tempMin}</span>
-                            <span class="text-[8px] text-gray-400">°C</span>
+                            <span class="text-[8px] text-gray-400 ml-0.5">°C</span>
                         </div>
-                        <div class="pt-1 border-t border-white/60">
+                        <div class="pt-1 border-t border-black/5">
                             <p class="text-[9px] font-bold text-blue-600">${data.rain}<span class="text-[7px] ml-0.5">${unit}</span></p>
                         </div>
                     </div>
