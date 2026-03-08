@@ -12,6 +12,20 @@ function getWeatherIcon(code) {
     return "❓";
 }
 
+/** WMO天気コードを日本語名に変換 */
+function getWeatherName(code) {
+    if (code === 0) return "快晴";
+    if (code <= 3) return "晴れ";
+    if (code <= 48) return "曇り";
+    if (code <= 57) return "霧雨";
+    if (code <= 67) return "雨";
+    if (code <= 77) return "雪";
+    if (code <= 82) return "激しい雨";
+    if (code <= 86) return "猛吹雪";
+    if (code <= 99) return "雷雨";
+    return "不明";
+}
+
 /**
  * 住所→緯度経度座標変換(google Maps APIのジオコーディングメソッド)
  * @param {string} address 住所
@@ -233,34 +247,33 @@ async function fetchWeather() {
 
         const renderDayCard = (data, color) => {
             if (!data || data.tempMax === null) {
-                return `
-                    <td class="w-24 p-2 bg-gray-50 rounded border border-gray-100 text-center">
-                        <p class="text-[10px] text-gray-300">データなし</p>
-                    </td>
-                `;
+                return `<td class="p-2 bg-gray-50 border border-gray-100"><p class="text-[10px] text-gray-300">-</p></td>`;
             }
 
             const colors = {
-                blue: { bg: 'bg-blue-50', border: 'border-blue-100', text: 'text-blue-800' },
-                green: { bg: 'bg-green-50', border: 'border-green-100', text: 'text-green-800' },
-                red: { bg: 'bg-red-50', border: 'border-red-100', text: 'text-red-800' }
+                blue: { bg: 'bg-blue-50', border: 'border-blue-100' },
+                green: { bg: 'bg-green-50', border: 'border-green-100' },
+                red: { bg: 'bg-red-50', border: 'border-red-100' }
             };
-            // 雨の判定（JMAなら0.1mm以上、他は降水確率30%以上で水色に）
+
             const isRaining = data.isJma ? (data.rain > 0) : (data.rain >= 30);
             const bgClass = isRaining ? 'bg-cyan-100 border-cyan-200' : `${colors[color].bg} ${colors[color].border}`;
             const unit = data.isJma ? "mm" : "%";
 
             return `
                 <td class="p-2 border ${bgClass} text-center min-w-[80px] transition-colors duration-300">
-                    <div class="flex flex-col gap-1">
-                        <div class="text-xl mb-1">${getWeatherIcon(data.code)}</div>
+                    <div class="flex flex-col gap-0.5">
+                        <div class="text-xl">${getWeatherIcon(data.code)}</div>
+                        <div class="text-[9px] font-bold text-gray-600 mb-1 leading-none">
+                            ${getWeatherName(data.code)}
+                        </div>
                         <div class="leading-tight">
                             <span class="text-sm font-bold text-red-500">${data.tempMax}</span>
                             <span class="text-[10px] text-gray-400">/</span>
                             <span class="text-sm font-bold text-blue-500">${data.tempMin}</span>
-                            <span class="text-[8px] text-gray-400 ml-0.5">°C</span>
+                            <span class="text-[8px] text-gray-400">°C</span>
                         </div>
-                        <div class="pt-1 border-t border-black/5">
+                        <div class="pt-1 border-t border-black/5 mt-1">
                             <p class="text-[9px] font-bold text-blue-600">${data.rain}<span class="text-[7px] ml-0.5">${unit}</span></p>
                         </div>
                     </div>
