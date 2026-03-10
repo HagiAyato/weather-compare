@@ -1,3 +1,16 @@
+/** 利用可能な気象モデルの定義 */
+const WEATHER_MODELS = {
+    'jma': { name: '日本 (JMA)', color: 'blue' },
+    'ecmwf_ifs025': { name: '欧州 (ECMWF)', color: 'green' },
+    'gfs_seamless': { name: '米国 (GFS)', color: 'red' },
+    'icon_seamless': { name: 'ドイツ (DWD/ICON)', color: 'orange' },
+    'meteofrance_seamless': { name: '仏国 (METEOFRANCE)', color: 'purple' },
+    'gem_seamless': { name: 'カナダ (CMC/GEM)', color: 'teal' }
+};
+
+/** 選択されている3つのモデルIDを保持 */
+let selectedModels = ['jma', 'ecmwf_ifs025', 'gfs_seamless'];
+
 /** WMO天気コードを絵文字に変換 */
 function getWeatherIcon(code) {
     if (code === 0) return "☀️";
@@ -72,7 +85,7 @@ async function getCoordsFromJapaneseAddresses(address1, address2, address3) {
  * @param {string} zipcode 郵便番号
  * @returns 住所
  */
-async function postToAddress(zipcode){
+async function postToAddress(zipcode) {
     let addr = null;
     const terRes = await fetch(`https://postcode.teraren.com/postcodes/${zipcode}.json`);
     if (terRes.ok) {
@@ -97,6 +110,15 @@ async function postToAddress(zipcode){
     return addr
 }
 
+/** ドロップダウン変更時の処理 */
+function handleModelChange(index, newModelId) {
+    selectedModels[index] = newModelId;
+    // 再描画（現在の入力内容で再取得）
+    if (document.getElementById('locationInput').value.trim()) {
+        fetchWeather();
+    }
+}
+
 /**
  * メイン処理
  */
@@ -105,6 +127,7 @@ async function fetchWeather() {
     const resultDiv = document.getElementById('result');
     resultDiv.innerHTML = '<div class="text-center p-4 text-gray-500">気象データを解析中...</div>';
 
+    const rowColors = ['blue', 'green', 'red']; // 行ごとの色固定
     const getDays = 8
 
     try {
@@ -122,8 +145,8 @@ async function fetchWeather() {
             // 正規表現解説: ^\d{7}$ (数字7桁のみ) または ^\d{3}-\d{4}$ (3桁-4桁)
             console.log('Fetching from zipcode:', input);
             const zipcode = input.replace(/-/g, '').replace(/\s/g, '');
-            addr = await postToAddress(zipcode);
-            addressText = `${addr.address1}${addr.address2}${addr.address3}`;
+            const addr = await postToAddress(zipcode);
+            const addressText = `${addr.address1}${addr.address2}${addr.address3}`;
             console.log('Address text:', addressText);
             let latlng = await getCoordsFromJapaneseAddresses(addr.address1, addr.address2, addr.address3);
             if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
@@ -217,32 +240,23 @@ async function fetchWeather() {
             }
         };
 
-        // 3. 全モデルを並列取得
-        const [jma, ecmwf, gfs] = await Promise.all([
-            fetchModel('jma'),
-            fetchModel('ecmwf_ifs025'),
-            fetchModel('gfs_seamless')
-        ]);
+        // 3. 選択された3つのモデルを並列取得
+        const results = await Promise.all(selectedModels.map(id => fetchModel(id)));
 
-        console.log('API Results:', { jma, ecmwf, gfs });
+        console.log('API Results:', { results });
 
         // 4. 結果表示（週間版）
         // 日付ヘッダーを取得。どれか一つのモデルで取得できれば十分。
-        let dates = [];
-        for (const model of [jma, ecmwf, gfs]) {
-            if (model && model.times) {
-                dates = model.times;
-                break;
-            }
-        }
+        let dates = results.find(r => r?.times)?.times || [];
 
         const renderHeader = (dates) => {
             const cells = dates.map(d => {
-                const m = new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
-                return `<th class="px-2 py-1 text-[9px] whitespace-nowrap">${m}</th>`;
+                const dateObj = new Date(d);
+                const m = dateObj.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+                const w = dateObj.toLocaleDateString('ja-JP', { weekday: 'short' });
+                return `<th class="px-2 py-1 text-[10px] whitespace-nowrap">${m}<br><span class="text-[8px] opacity-60">${w}</span></th>`;
             }).join('');
-            // first cell left empty but allow width to expand naturally
-            return `<tr><th class="px-2 py-1"></th>${cells}</tr>`;
+            return `<tr><th class="w-24"></th>${cells}</tr>`;
         };
 
         const renderDayCard = (data, color) => {
@@ -281,12 +295,26 @@ async function fetchWeather() {
             `;
         };
 
-        const renderRow = (label, modelData, color) => {
-            const cells = (modelData || []).map(d => renderDayCard(d, color)).join('');
+        const renderModelSelect = (index) => {
+            const options = Object.entries(WEATHER_MODELS).map(([id, info]) =>
+                `<option value="${id}" ${selectedModels[index] === id ? 'selected' : ''}>${info.name}</option>`
+            ).join('');
+            return `
+                <select onchange="handleModelChange(${index}, this.value)" 
+                    class="text-[10px] font-bold border rounded bg-white/50 p-1 w-full focus:ring-0">
+                    ${options}
+                </select>
+            `;
+        };
+
+        const renderRow = (modelIndex, data) => {
+            const colorKey = rowColors[modelIndex];
+            const cells = (data || []).map(d => renderDayCard(d, colorKey)).join('');
             return `
                 <tr>
-                    <td class="text-[10px] font-bold text-gray-600 py-2 pr-2 whitespace-nowrap text-left">
-                        ${label}<br><span class="text-[8px] font-normal text-gray-400">最高/最低</span>
+                    <td class="p-1 pr-2 min-w-[100px]">
+                        ${renderModelSelect(modelIndex)}
+                        <div class="text-[7px] text-gray-400 mt-0.5 text-left pl-1">最高 / 最低</div>
                     </td>
                     ${cells}
                 </tr>
@@ -294,23 +322,37 @@ async function fetchWeather() {
         };
 
         const mapUrl = `https://static-maps.yandex.ru/1.x/?lang=ja_JP&ll=${lon},${lat}&z=13&l=map&size=300,120`;
+
+        // モデル選択用のHTML生成
+        const modelSelectors = Object.entries(WEATHER_MODELS).map(([id, info]) => {
+            const isChecked = selectedModels.includes(id) ? 'checked' : '';
+            // 最大3つまでしか選べないように制御するためのクラス（JSで制御）
+            return `
+                <label class="inline-flex items-center space-x-1 bg-gray-50 px-2 py-1 rounded border text-[10px] cursor-pointer hover:bg-white transition-colors">
+                    <input type="checkbox" value="${id}" ${isChecked} onchange="updateSelectedModels(this)" 
+                        class="model-checkbox w-3 h-3 text-blue-600 focus:ring-0">
+                    <span>${info.name}</span>
+                </label>
+            `;
+        }).join('');
+
         resultDiv.innerHTML = `
-            <div class="p-4 bg-white border rounded-lg shadow-sm overflow-x-auto">
-                <h2 class="font-bold text-lg mb-4 text-center text-gray-700 underline decoration-blue-200">週間予報比較</h2>
-                <table class="w-full table-auto text-center">
-                    <thead class="bg-gray-100">${renderHeader(dates)}</thead>
-                    <tbody>
-                        ${renderRow('日本(JMA)', jma, 'blue')}
-                        ${renderRow('欧州(ECMWF)', ecmwf, 'green')}
-                        ${renderRow('米国(GFS)', gfs, 'red')}
-                    </tbody>
-                </table>
-                <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
-                    地点: ${lat.toFixed(2)}, ${lon.toFixed(2)} (Open-Meteo API)
+            <div class="p-4 bg-white border rounded-lg shadow-sm">
+                <h2 class="font-bold text-lg mb-4 text-center text-gray-700">週間予報モデル比較</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full table-auto border-separate border-spacing-px">
+                        <thead class="bg-gray-100">${renderHeader(dates)}</thead>
+                        <tbody>
+                            ${results.map((data, i) => renderRow(i, data)).join('')}
+                        </tbody>
+                    </table>
                 </div>
-                <div class="mt-2 w-full max-w-[400px] h-[120px] mx-auto rounded-md border border-gray-200 overflow-hidden shadow-sm hover:opacity-90 transition-opacity">
+                <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
+                    地点: ${lat.toFixed(4)}, ${lon.toFixed(4)}
+                </div>
+                <div class="mt-2 w-full max-w-[400px] h-[120px] mx-auto rounded-md border border-gray-200 overflow-hidden shadow-sm">
                     <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank">
-                        <img src="${mapUrl}" alt="Location Map" class="w-full h-full object-cover">
+                        <img src="${mapUrl}" alt="Map" class="w-full h-full object-cover hover:opacity-90 transition-opacity">
                     </a>
                 </div>
             </div>
