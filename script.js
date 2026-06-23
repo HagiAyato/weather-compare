@@ -14,13 +14,8 @@ let selectedModels = ['jma', 'ecmwf_ifs025', 'gfs_seamless'];
 /** ブラウザの位置情報から住所を入力 */
 function fillAddressFromBrowserLocation() {
     const locationInput = document.getElementById('locationInput');
-    const resultDiv = document.getElementById('result');
     if (!locationInput) return;
     if (!('geolocation' in navigator)) return;
-
-    if (resultDiv) {
-        resultDiv.innerHTML = '<div class="text-center p-4 text-gray-500">現在地から住所を取得中...</div>';
-    }
 
     navigator.geolocation.getCurrentPosition(
         async (position) => {
@@ -40,16 +35,11 @@ function fillAddressFromBrowserLocation() {
                 if (!address) throw new Error();
 
                 locationInput.value = address;
-                if (resultDiv) resultDiv.innerHTML = '';
             } catch (e) {
-                if (resultDiv) {
-                    resultDiv.innerHTML = '<p class="text-red-500 text-sm p-4 bg-red-50 border border-red-100 rounded text-center">現在地から住所を取得できませんでした。</p>';
-                }
+                console.warn('Failed to fill address from browser location.');
             }
         },
-        () => {
-            if (resultDiv) resultDiv.innerHTML = '';
-        },
+        () => {},
         {
             enableHighAccuracy: false,
             timeout: 10000,
