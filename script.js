@@ -125,6 +125,8 @@ function handleModelChange(index, newModelId) {
 async function fetchWeather() {
     const input = document.getElementById('locationInput').value.trim();
     const resultDiv = document.getElementById('result');
+    let addressText = input;
+
     resultDiv.innerHTML = '<div class="text-center p-4 text-gray-500">気象データを解析中...</div>';
 
     const rowColors = ['blue', 'green', 'red']; // 行ごとの色固定
@@ -146,7 +148,7 @@ async function fetchWeather() {
             console.log('Fetching from zipcode:', input);
             const zipcode = input.replace(/-/g, '').replace(/\s/g, '');
             const addr = await postToAddress(zipcode);
-            const addressText = `${addr.address1}${addr.address2}${addr.address3}`;
+            addressText = `${addr.address1}${addr.address2}${addr.address3}`;
             console.log('Address text:', addressText);
             let latlng = await getCoordsFromJapaneseAddresses(addr.address1, addr.address2, addr.address3);
             if (!latlng || !validCoord(latlng.lat) || !validCoord(latlng.lng)) {
@@ -339,6 +341,7 @@ async function fetchWeather() {
         resultDiv.innerHTML = `
             <div class="p-4 bg-white border rounded-lg shadow-sm">
                 <h2 class="font-bold text-lg mb-4 text-center text-gray-700">週間予報モデル比較</h2>
+                <div class="text-left p-4 text-black-500">対象地点：${addressText}</div>
                 <div class="overflow-x-auto">
                     <table class="w-full table-auto border-separate border-spacing-px">
                         <thead class="bg-gray-100">${renderHeader(dates)}</thead>
@@ -348,7 +351,7 @@ async function fetchWeather() {
                     </table>
                 </div>
                 <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
-                    地点: ${lat.toFixed(4)}, ${lon.toFixed(4)}
+                    対象地点の緯度経度: ${lat.toFixed(4)}, ${lon.toFixed(4)}
                 </div>
                 <div class="mt-2 w-full max-w-[400px] h-[120px] mx-auto rounded-md border border-gray-200 overflow-hidden shadow-sm">
                     <a href="https://www.google.com/maps?q=${lat},${lon}" target="_blank">
