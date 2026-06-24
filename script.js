@@ -11,6 +11,43 @@ const WEATHER_MODELS = {
 /** 選択されている3つのモデルIDを保持 */
 let selectedModels = ['jma', 'ecmwf_ifs025', 'gfs_seamless'];
 
+/** ブラウザの位置情報から住所を入力 */
+function fillAddressFromBrowserLocation() {
+    const locationInput = document.getElementById('locationInput');
+    if (!locationInput) return;
+    if (!('geolocation' in navigator)) return;
+
+    navigator.geolocation.getCurrentPosition(
+        async (position) => {
+            const { latitude, longitude } = position.coords;
+            try {
+                const params = new URLSearchParams({
+                    method: 'searchByGeoLocation',
+                    x: longitude,
+                    y: latitude
+                });
+                const res = await fetch(`https://geoapi.heartrails.com/api/json?${params.toString()}`);
+                if (!res.ok) throw new Error();
+
+                const data = await res.json();
+                const loc = data.response?.location?.[0];
+                const address = [loc?.prefecture, loc?.city, loc?.town].filter(Boolean).join('');
+                if (!address) throw new Error();
+
+                locationInput.value = address;
+            } catch (e) {
+                console.warn('Failed to fill address from browser location.');
+            }
+        },
+        () => {},
+        {
+            enableHighAccuracy: false,
+            timeout: 10000,
+            maximumAge: 600000
+        }
+    );
+}
+
 /** WMO天気コードを絵文字に変換 */
 function getWeatherIcon(code) {
     if (code === 0) return "☀️";
@@ -365,4 +402,3 @@ async function fetchWeather() {
         resultDiv.innerHTML = `<p class="text-red-500 text-sm p-4 bg-red-50 border border-red-100 rounded text-center">⚠️ ${err.message}</p>`;
     }
 }
-
