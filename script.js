@@ -387,6 +387,9 @@ async function fetchWeather() {
                         </tbody>
                     </table>
                 </div>
+                <div class="mt-8">
+                    <canvas id="tempChart"></canvas>
+                </div>
                 <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
                     対象地点の緯度経度: ${lat.toFixed(4)}, ${lon.toFixed(4)}
                 </div>
@@ -398,7 +401,119 @@ async function fetchWeather() {
             </div>
         `;
 
+        // グラフ描画
+        renderChart(dates, results);
+
     } catch (err) {
         resultDiv.innerHTML = `<p class="text-red-500 text-sm p-4 bg-red-50 border border-red-100 rounded text-center">⚠️ ${err.message}</p>`;
     }
 }
+
+/**
+ * 気温グラフを描画する
+ * @param {Array<string>} dates - 日付の配列
+ * @param {Array<Array<Object>>} weatherData - 各モデルの天気データの配列
+ */
+function renderChart(dates, weatherData) {
+    const ctx = document.getElementById('tempChart').getContext('2d');
+    const datasets = [];
+
+    const modelColors = [
+        'rgb(59, 130, 246)',    // blue-500
+        'rgb(34, 197, 94)', // green-500
+        'rgb(239, 68, 68)', // red-500
+        // 他のモデルも必要に応じて追加
+    ];
+
+    weatherData.forEach((modelResult, modelIndex) => {
+        if (!modelResult) return;
+
+        const modelId = selectedModels[modelIndex];
+        const modelInfo = WEATHER_MODELS[modelId];
+        const color = modelColors[modelIndex] || 'rgb(100, 116, 139)'; // default gray-500
+
+        // 最高気温
+        datasets.push({
+            label: `${modelInfo.name} 最高気温`,
+            data: modelResult.map(day => day.tempMax),
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            pointStyle: 'triangle',
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0, // 直線にする
+            lineTension: 0, // 直線にする
+        });
+
+        // 最低気温
+        datasets.push({
+            label: `${modelInfo.name} 最低気温`,
+            data: modelResult.map(day => day.tempMin),
+            borderColor: color,
+            backgroundColor: color,
+            borderWidth: 2,
+            borderDash: [5, 5], // 破線
+            pointStyle: 'triangle',
+            pointRotation: 180, // 逆三角形
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            fill: false,
+            tension: 0, // 直線にする
+            lineTension: 0, // 直線にする
+        });
+    });
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dates.map(d => new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })),
+            datasets: datasets
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: {
+                    display: true,
+                    text: '最低最高気温比較グラフ',
+                    font: {
+                        size: 16
+                    }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) {
+                                label += ': ';
+                            }
+                            if (context.parsed.y !== null) {
+                                label += context.parsed.y + '°C';
+                            }
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    title: {
+                        display: true,
+                        text: '日付'
+                    }
+                },
+                y: {
+                    title: {
+                        display: true,
+                        text: '気温 (°C)'
+                    },
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+}
+
