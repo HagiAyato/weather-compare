@@ -109,7 +109,7 @@ async function getCoordsFromJapaneseAddresses(address1, address2, address3) {
     const match = townName
         ? towns.find(t => t.town && (t.town === townName || t.town.startsWith(townName)))
         : towns[0];
-    if (match && typeof match.lat === 'number' && typeof match.lng === 'number') {
+    if (match && typeof match.lat === 'number' && typeof match.lat === 'number') {
         return { lat: match.lat, lng: match.lng };
     }
     return null;
@@ -387,8 +387,9 @@ async function fetchWeather() {
                         </tbody>
                     </table>
                 </div>
-                <div class="mt-8">
-                    <canvas id="tempChart"></canvas>
+                <!-- ここにグラフ表示機能追加 -->
+                <div class="mt-8 h-80"> <!-- 高さを固定して縦方向のつぶれを防止 -->
+                    <canvas id="tempChart" style="width:100%; height:100%;"></canvas>
                 </div>
                 <div class="mt-4 p-2 bg-gray-50 rounded text-[9px] text-gray-400 text-center">
                     対象地点の緯度経度: ${lat.toFixed(4)}, ${lon.toFixed(4)}
@@ -414,6 +415,8 @@ async function fetchWeather() {
  * @param {Array<string>} dates - 日付の配列
  * @param {Array<Array<Object>>} weatherData - 各モデルの天気データの配列
  */
+let myChart; // グローバル変数としてチャートインスタンスを保持
+
 function renderChart(dates, weatherData) {
     const ctx = document.getElementById('tempChart').getContext('2d');
     const datasets = [];
@@ -465,7 +468,11 @@ function renderChart(dates, weatherData) {
         });
     });
 
-    new Chart(ctx, {
+    // 既存のチャートインスタンスがあれば破棄
+    if (myChart) {
+        myChart.destroy();
+    }
+    myChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: dates.map(d => new Date(d).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })),
@@ -473,6 +480,7 @@ function renderChart(dates, weatherData) {
         },
         options: {
             responsive: true,
+            maintainAspectRatio: false, // アスペクト比を維持しない
             plugins: {
                 title: {
                     display: true,
@@ -516,4 +524,12 @@ function renderChart(dates, weatherData) {
         }
     });
 }
+
+// ウィンドウのリサイズイベントを監視し、グラフを更新
+window.addEventListener('resize', () => {
+    if (myChart) {
+        myChart.resize();
+    }
+});
+
 
