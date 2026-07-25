@@ -3,6 +3,10 @@ google_analytics: UA-185637831-1
 # language
 lang: ja-JP
 
+# Site settings
+url: "https://hagiayato.github.io"
+baseurl: "/weather-compare" # リポジトリ名を設定
+
 # Build settings
 plugins:
   - jekyll-feed # フィード
